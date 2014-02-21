@@ -21,17 +21,16 @@ What information do you need to represent the entire game?
 
 type Vector = {x : Float, y : Float}
 data PlayState = Play | Pause
-type Paddle = { position : Vector, width : Int, height : Int}
+type Paddle = { position : Vector, size : Vector }
 type Ball = {velocity: Vector, position: Vector}
 type GameState = {playState : PlayState, paddle : Paddle, balls: [Ball]}
 ballSize = 10.0
 
 defaultGame : GameState
 defaultGame = { playState = Pause
-              , paddle = { position = {x = 0, y = 10 - halfHeight}, width = 200, height = 20}
+              , paddle = { position = {x = 0, y = 10 - halfHeight}, size = { x = 200, y = 20 } }
               , balls = [ { velocity = {x = 0.5, y = 0.5}, position = {x = 0, y = 0} } ]
               }
-
 
 {-- Part 3: Update the game ---------------------------------------------------
 How does the game step from one state to another based on user input?
@@ -41,52 +40,37 @@ stepPlayState buttonPressed playState = if(buttonPressed)
                                         then (if(playState == Play) then Pause else Play)
                                         else playState
 
-clampPaddleX : Paddle -> Float
-clampPaddleX paddle = let minX = ((toFloat paddle.width - gameWidth) / 2)
-                          maxX = ((gameWidth - (toFloat paddle.width)) / 2)
-                          pos = paddle.position
-                      in clamp minX maxX pos.x
+maxObjX : Float -> Float
+maxObjX objWidth = (gameWidth - objWidth) /2
 
-clampBallX : Ball -> Ball
-clampBallX ball = let minX = (ballSize - gameWidth) / 2
-                      maxX = (gameWidth - ballSize) / 2
-                      x'   = clamp minX maxX ball.position.x
-                      vx'  = if (x' == minX || x' == maxX)
-                             then -ball.velocity.x
-                             else ball.velocity.x
-                      velocity =  ball.velocity
-                      velocity' = { velocity | x <- vx' }
-                      position = ball.position
-                      position' = { position | x <- x' }
-                  in { ball | position <- position', velocity <- velocity' }
+minObjX : Float -> Float
+minObjX objWidth = (objWidth - gameWidth) /2
 
-clampBallY : Ball -> Ball
-clampBallY ball = let minY = (ballSize - gameHeight) / 2
-                      maxY = (gameHeight - ballSize) / 2
-                      y'   = clamp minY maxY ball.position.y
-                      vy'  = if (y' == minY || y' == maxY)
-                             then -ball.velocity.y
-                             else ball.velocity.y
-                      velocity =  ball.velocity
-                      velocity' = { velocity | y <- vy' }
-                      position = ball.position
-                      position' = { position | y <- y' }
-                  in { ball | position <- position', velocity <- velocity' }
+maxObjY : Float -> Float
+maxObjY objHeight = (gameHeight - objHeight) /2
+
+minObjY : Float -> Float
+minObjY objHeight = (objHeight - gameHeight) /2
 
 stepBall : Time -> Ball -> Ball 
-stepBall timeDelta ball = let position = ball.position
-                              position' = { position | x <- ball.position.x + ball.velocity.x * timeDelta
-                                                     , y <- ball.position.y + ball.velocity.y * timeDelta }
-                              ball' = { ball | position <- position' }
-                          in clampBallY (clampBallX ball')
- 
+stepBall timeDelta ball = let min = { x = minObjX ballSize, y = minObjY ballSize }
+                              max = { x = maxObjX ballSize, y = maxObjY ballSize } 
+                              x' = ball.position.x + ball.velocity.x * timeDelta
+                              y' = ball.position.y + ball.velocity.y * timeDelta 
+                              position' = { x = clamp min.x max.x x', y = clamp min.y max.y y' }
+                              vx' = if (position'.x == min.x || position'.x == max.x) then -ball.velocity.x else ball.velocity.x
+                              vy' = if (position'.y == min.y || position'.y == max.y) then -ball.velocity.y else ball.velocity.y
+                              velocity' = { x = vx', y = vy' }
+                          in { ball | position <- position', velocity <- velocity' }
+
 stepPaddle : Time -> Int -> Paddle -> Paddle
-stepPaddle timeDelta dir paddle = let vx'     = toFloat dir
-                                      pos'    = paddle.position
-                                      position' = { pos' | x <- paddle.position.x + (vx' * timeDelta) } 
-                                      paddle' = { paddle | position <- position' }
-                                      position'' = { position' | x <- clampPaddleX paddle' }
-                                  in { paddle' | position <- position'' }
+stepPaddle timeDelta dir paddle = let position' = paddle.position
+                                      minX = minObjX paddle.size.x
+                                      maxX = maxObjX paddle.size.x
+                                      vx'       = toFloat dir
+                                      x'        = position'.x + (vx' * timeDelta)
+                                      pos'      = { position' | x <- clamp minX maxX x' }
+                                  in { paddle | position <- pos' }
 
 stepGame : Input -> GameState -> GameState
 stepGame {timeDelta,userInput} gameState = { gameState 
