@@ -3,13 +3,7 @@ import Window
 import Keyboard
 
 {-- Part 1: Model the user input ----------------------------------------------
-
 What information do you need to represent all relevant user input?
-
-Task: Redefine `UserInput` to include all of the information you need.
-      Redefine `userInput` to be a signal that correctly models the user
-      input as described by `UserInput`.
-
 ------------------------------------------------------------------------------}
 
 type UserInput = {space: Bool, paddle: Int}
@@ -19,47 +13,28 @@ userInput = lift2 UserInput Keyboard.space (lift .x Keyboard.arrows)
 
 type Input = { timeDelta:Float, userInput:UserInput }
 
-
-
 {-- Part 2: Model the game ----------------------------------------------------
-
 What information do you need to represent the entire game?
-
-Tasks: Redefine `GameState` to represent your particular game.
-       Redefine `defaultGame` to represent your initial game state.
-
-For example, if you want to represent many objects that just have a position,
-your GameState might just be a list of coordinates and your default game might
-be an empty list (no objects at the start):
-
-    type GameState = { objects : [(Float,Float)] }
-    defaultGame = { objects = [] }
-
 ------------------------------------------------------------------------------}
 (gameWidth,gameHeight) = (500,900)
 (halfWidth,halfHeight) = (gameWidth / 2, gameHeight / 2)
 
+type Vector = {x : Float, y : Float}
 data PlayState = Play | Pause
-type Paddle = {vx : Float, vy : Float, x : Float, y : Float, width : Int, height : Int}
-type Ball = {vx : Float, vy : Float, x : Float, y : Float}
+type Paddle = { position : Vector, width : Int, height : Int}
+type Ball = {velocity: Vector, position: Vector}
 type GameState = {playState : PlayState, paddle : Paddle, balls: [Ball]}
 ballSize = 10.0
 
 defaultGame : GameState
 defaultGame = { playState = Pause
-              , paddle = {vx = 0, vy = 0, x = 0, y = 10 - halfHeight, width = 200, height = 20}
-              , balls = [{vx = 0.5, vy = 0.5, x = 0, y = 0}]
+              , paddle = { position = {x = 0, y = 10 - halfHeight}, width = 200, height = 20}
+              , balls = [ { velocity = {x = 0.5, y = 0.5}, position = {x = 0, y = 0} } ]
               }
 
 
 {-- Part 3: Update the game ---------------------------------------------------
-
 How does the game step from one state to another based on user input?
-
-Task: redefine `stepGame` to use the UserInput and GameState
-      you defined in parts 1 and 2. Maybe use some helper functions
-      to break up the work, stepping smaller parts of the game.
-
 ------------------------------------------------------------------------------}
 stepPlayState : Bool -> PlayState -> PlayState
 stepPlayState buttonPressed playState = if(buttonPressed)
@@ -69,38 +44,49 @@ stepPlayState buttonPressed playState = if(buttonPressed)
 clampPaddleX : Paddle -> Float
 clampPaddleX paddle = let minX = ((toFloat paddle.width - gameWidth) / 2)
                           maxX = ((gameWidth - (toFloat paddle.width)) / 2)
-                      in clamp minX maxX paddle.x
+                          pos = paddle.position
+                      in clamp minX maxX pos.x
 
 clampBallX : Ball -> Ball
 clampBallX ball = let minX = (ballSize - gameWidth) / 2
                       maxX = (gameWidth - ballSize) / 2
-                      x'   = clamp minX maxX ball.x
+                      x'   = clamp minX maxX ball.position.x
                       vx'  = if (x' == minX || x' == maxX)
-                             then -ball.vx
-                             else ball.vx
-                  in { ball | x <- x', vx <- vx' }
+                             then -ball.velocity.x
+                             else ball.velocity.x
+                      velocity =  ball.velocity
+                      velocity' = { velocity | x <- vx' }
+                      position = ball.position
+                      position' = { position | x <- x' }
+                  in { ball | position <- position', velocity <- velocity' }
 
 clampBallY : Ball -> Ball
 clampBallY ball = let minY = (ballSize - gameHeight) / 2
                       maxY = (gameHeight - ballSize) / 2
-                      y'   = clamp minY maxY ball.y
+                      y'   = clamp minY maxY ball.position.y
                       vy'  = if (y' == minY || y' == maxY)
-                             then -ball.vy
-                             else ball.vy
-                  in { ball | y <- y', vy <- vy' }
+                             then -ball.velocity.y
+                             else ball.velocity.y
+                      velocity =  ball.velocity
+                      velocity' = { velocity | y <- vy' }
+                      position = ball.position
+                      position' = { position | y <- y' }
+                  in { ball | position <- position', velocity <- velocity' }
 
 stepBall : Time -> Ball -> Ball 
-stepBall timeDelta ball = let ball' = { ball
-                                      | x <- ball.x + ball.vx * timeDelta
-                                      , y <- ball.y + ball.vy * timeDelta
-                                      }
+stepBall timeDelta ball = let position = ball.position
+                              position' = { position | x <- ball.position.x + ball.velocity.x * timeDelta
+                                                     , y <- ball.position.y + ball.velocity.y * timeDelta }
+                              ball' = { ball | position <- position' }
                           in clampBallY (clampBallX ball')
  
 stepPaddle : Time -> Int -> Paddle -> Paddle
 stepPaddle timeDelta dir paddle = let vx'     = toFloat dir
-                                      x'      = paddle.x + (vx' * timeDelta)
-                                      paddle' = { paddle | x <- x', vx <- vx'}
-                                  in {paddle' | x <- clampPaddleX paddle'}
+                                      pos'    = paddle.position
+                                      position' = { pos' | x <- paddle.position.x + (vx' * timeDelta) } 
+                                      paddle' = { paddle | position <- position' }
+                                      position'' = { position' | x <- clampPaddleX paddle' }
+                                  in { paddle' | position <- position'' }
 
 stepGame : Input -> GameState -> GameState
 stepGame {timeDelta,userInput} gameState = { gameState 
@@ -109,24 +95,19 @@ stepGame {timeDelta,userInput} gameState = { gameState
                                            , balls <- map (stepBall timeDelta) gameState.balls
                                            }
 
-
 {-- Part 4: Display the game --------------------------------------------------
-
 How should the GameState be displayed to the user?
-
-Task: redefine `display` to use the GameState you defined in part 2.
-
 ------------------------------------------------------------------------------}
 
 displayArena = rect gameWidth gameHeight |> outlined defaultLine
 
 displayPaddle : Paddle -> Form
 displayPaddle paddle = rect 200 20 |> filled red
-                                   |> move (paddle.x, paddle.y)
+                                   |> move (paddle.position.x, paddle.position.y)
 
 displayBall : Ball -> Form
 displayBall ball = circle ballSize |> filled blue
-                                   |> move (ball.x, ball.y)
+                                   |> move (ball.position.x, ball.position.y)
 
 display : (Int,Int) -> GameState -> Element
 display (w,h) gameState = flow down 
@@ -137,11 +118,8 @@ display (w,h) gameState = flow down
                               ] ++ (map displayBall gameState.balls))
                           ]
 
-
 {-- That's all folks! ---------------------------------------------------------
-
 The following code puts it all together and shows it on screen.
-
 ------------------------------------------------------------------------------}
 
 delta = fps 30
