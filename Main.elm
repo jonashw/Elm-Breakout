@@ -1,4 +1,3 @@
-import open Lib
 import Window
 import Keyboard
 
@@ -19,17 +18,20 @@ What information do you need to represent the entire game?
 (gameWidth,gameHeight) = (500,900)
 (halfWidth,halfHeight) = (gameWidth / 2, gameHeight / 2)
 
+type Positioned a = { a | x : Float, y : Float }
+type Moving a = { a | vx : Float, vy : Float }
+type Sized a = { a | width : Float, height : Float }
 type Vector = {x : Float, y : Float}
 data PlayState = Play | Pause
-type Paddle = { position : Vector, size : Vector }
-type Ball = {velocity: Vector, position: Vector}
+type Paddle = { x : Float, y : Float, size : Vector }
+type Ball = {x : Float, y : Float, vx : Float, vy : Float}
 type GameState = {playState : PlayState, paddle : Paddle, balls: [Ball]}
 ballSize = 10.0
 
 defaultGame : GameState
 defaultGame = { playState = Pause
-              , paddle = { position = {x = 0, y = 10 - halfHeight}, size = { x = 200, y = 20 } }
-              , balls = [ { velocity = {x = 0.5, y = 0.5}, position = {x = 0, y = 0} } ]
+              , paddle = { x = 0, y = 10 - halfHeight, size = { x = 200, y = 20 } }
+              , balls = [ { vx = 0.5, vy = 0.5, x = 0, y = 0 } ]
               }
 
 {-- Part 3: Update the game ---------------------------------------------------
@@ -55,22 +57,18 @@ minObjY objHeight = (objHeight - gameHeight) /2
 stepBall : Time -> Ball -> Ball 
 stepBall timeDelta ball = let min = { x = minObjX ballSize, y = minObjY ballSize }
                               max = { x = maxObjX ballSize, y = maxObjY ballSize } 
-                              x' = ball.position.x + ball.velocity.x * timeDelta
-                              y' = ball.position.y + ball.velocity.y * timeDelta 
-                              position' = { x = clamp min.x max.x x', y = clamp min.y max.y y' }
-                              vx' = if (position'.x == min.x || position'.x == max.x) then -ball.velocity.x else ball.velocity.x
-                              vy' = if (position'.y == min.y || position'.y == max.y) then -ball.velocity.y else ball.velocity.y
-                              velocity' = { x = vx', y = vy' }
-                          in { ball | position <- position', velocity <- velocity' }
+                              x' = clamp min.x max.x (ball.x + ball.vx * timeDelta)
+                              y' = clamp min.y max.y (ball.y + ball.vy * timeDelta)
+                              vx' = if (x' == min.x || x' == max.x) then -ball.vx else ball.vx
+                              vy' = if (y' == min.y || y' == max.y) then -ball.vy else ball.vy
+                          in { ball | x <- x', y <- y', vx <- vx', vy <- vy' }
 
 stepPaddle : Time -> Int -> Paddle -> Paddle
-stepPaddle timeDelta dir paddle = let position' = paddle.position
-                                      minX = minObjX paddle.size.x
+stepPaddle timeDelta dir paddle = let minX = minObjX paddle.size.x
                                       maxX = maxObjX paddle.size.x
                                       vx'       = toFloat dir
-                                      x'        = position'.x + (vx' * timeDelta)
-                                      pos'      = { position' | x <- clamp minX maxX x' }
-                                  in { paddle | position <- pos' }
+                                      x'        = paddle.x + (vx' * timeDelta)
+                                  in { paddle | x <- clamp minX maxX x' }
 
 stepGame : Input -> GameState -> GameState
 stepGame {timeDelta,userInput} gameState = { gameState 
@@ -87,11 +85,11 @@ displayArena = rect gameWidth gameHeight |> outlined defaultLine
 
 displayPaddle : Paddle -> Form
 displayPaddle paddle = rect 200 20 |> filled red
-                                   |> move (paddle.position.x, paddle.position.y)
+                                   |> move (paddle.x, paddle.y)
 
 displayBall : Ball -> Form
 displayBall ball = circle ballSize |> filled blue
-                                   |> move (ball.position.x, ball.position.y)
+                                   |> move (ball.x, ball.y)
 
 display : (Int,Int) -> GameState -> Element
 display (w,h) gameState = flow down 
@@ -112,3 +110,18 @@ input = sampleOn delta (lift2 Input delta userInput)
 gameState = foldp stepGame defaultGame input
 
 main = lift2 display Window.dimensions gameState
+
+
+
+{-- lib --}
+
+cartProd : [a] -> [b] -> [(a,b)]
+cartProd xs ys = if ((length xs) == 0 || (length ys) == 0)
+                then []
+                else map (\y -> (head xs, y)) ys ++ cartProd (tail xs) ys
+
+range : Int -> [Int]
+range n = if (n < 0)
+          then [0]
+          else n :: range (n-1)
+
